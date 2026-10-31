@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class JsonFileOperationRepositoryTest {
+class JsonFileRepositoryTest {
 
     @TempDir
     Path dir;
@@ -41,38 +41,38 @@ class JsonFileOperationRepositoryTest {
                 new Expense(UUID.randomUUID(), accountA, new BigDecimal("250.50"), "Продукты", at, null),
                 new Transfer(UUID.randomUUID(), accountA, accountB, new BigDecimal("100.00"), at));
 
-        ops.forEach(new JsonFileOperationRepository(file())::save);
+        ops.forEach(new JsonFileRepository(file())::saveOperation);
 
-        assertEquals(ops, new JsonFileOperationRepository(file()).findAll());
+        assertEquals(ops, new JsonFileRepository(file()).findAllOperations());
     }
 
     @Test
     void missingFileIsReadAsEmptyList() {
-        var repo = new JsonFileOperationRepository(file());
+        var repo = new JsonFileRepository(file());
 
-        assertTrue(repo.findAll().isEmpty());
+        assertTrue(repo.findAllOperations().isEmpty());
     }
 
     @Test
     void corruptedFileThrowsStorageException() throws IOException {
         Files.writeString(file(), "[{\"kind\": \"INCOME\", \"id\": ");
-        var repo = new JsonFileOperationRepository(file());
+        var repo = new JsonFileRepository(file());
 
-        var e = assertThrows(StorageException.class, repo::findAll);
+        var e = assertThrows(StorageException.class, repo::findAllOperations);
         assertNotNull(e.getCause());
     }
 
     @Test
     void noTemporaryFilesLeftAfterManySaves() throws IOException {
-        var repo = new JsonFileOperationRepository(file());
+        var repo = new JsonFileRepository(file());
 
         for (int i = 0; i < 100; i++) {
-            repo.save(new Expense(UUID.randomUUID(), accountA, new BigDecimal("1.00"), "Кофе", at, null));
+            repo.saveOperation(new Expense(UUID.randomUUID(), accountA, new BigDecimal("1.00"), "Кофе", at, null));
         }
 
         try (Stream<Path> files = Files.list(dir)) {
             assertEquals(List.of(file()), files.toList());
         }
-        assertEquals(100, repo.findAll().size());
+        assertEquals(100, repo.findAllOperations().size());
     }
 }
