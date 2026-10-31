@@ -11,13 +11,13 @@ public class InMemoryOperationRepository implements OperationRepository {
     private final List<Operation> operations = new ArrayList<>();
 
     @Override
-    public synchronized void save(Operation op) {
+    public synchronized void saveOperation(Operation op) {
         Objects.requireNonNull(op, "op не может быть null");
         operations.add(op);
     }
 
     @Override
-    public synchronized List<Operation> findAll() {
+    public synchronized List<Operation> findAllOperations() {
         return List.copyOf(operations);
     }
 }

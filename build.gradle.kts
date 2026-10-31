@@ -1,9 +1,14 @@
 plugins {
     id("java")
+    application
 }
 
-group = "org.example"
-version = "0.0.1"
+application {
+    mainClass = "com.example.finance.FinanceConsole"
+}
+
+group = "com.example"
+version = "0.1.0"
 
 java {
     toolchain {
@@ -25,4 +30,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.named<JavaExec>("run") {
+    standardInput = System.`in`
 }
