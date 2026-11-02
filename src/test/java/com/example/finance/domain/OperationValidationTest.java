@@ -1,12 +1,16 @@
 package com.example.finance.domain;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OperationValidationTest {
 
@@ -15,30 +19,40 @@ class OperationValidationTest {
                 "Зарплата", Instant.now(), description);
     }
 
-    @Test
-    void amountMustBePositive() {
-        assertThrows(IllegalArgumentException.class, () -> income("0", null));
-    }
+    @ParameterizedTest(name = "[{index}] {arguments}")
+    @CsvSource(useHeadersInDisplayName = true, textBlock = """
+            amount,     valid
+            0,          false
+            -1,         false
+            0.001,      false
+            1000000.01, false
+            0.01,       true
+            1,          true
+            999999.99,  true
+            1000000.00, true
+            """)
+    void amountValidation(String amount, boolean valid) {
+        ThrowingCallable create = () -> income(amount, null);
 
-    @Test
-    void amountMustNotExceedMillion() {
-        assertThrows(IllegalArgumentException.class, () -> income("1000000.01", null));
-    }
-
-    @Test
-    void amountMustHaveAtMostTwoDecimalPlaces() {
-        assertThrows(IllegalArgumentException.class, () -> income("10.505", null));
+        if (valid) {
+            assertThatCode(create).doesNotThrowAnyException();
+        } else {
+            assertThatThrownBy(create).isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Test
     void descriptionMustNotExceed255Characters() {
-        assertThrows(IllegalArgumentException.class, () -> income("10.00", "a".repeat(256)));
+        assertThatThrownBy(() -> income("10.00", "a".repeat(256)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void transferMustHaveDifferentAccounts() {
         UUID account = UUID.randomUUID();
-        assertThrows(IllegalArgumentException.class,
-                () -> new Transfer(UUID.randomUUID(), account, account, new BigDecimal("10.00"), Instant.now()));
+
+        assertThatThrownBy(() -> new Transfer(UUID.randomUUID(), account, account,
+                new BigDecimal("10.00"), Instant.now()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

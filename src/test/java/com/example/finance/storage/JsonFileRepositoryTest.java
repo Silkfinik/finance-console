@@ -16,10 +16,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JsonFileRepositoryTest {
 
@@ -43,14 +41,14 @@ class JsonFileRepositoryTest {
 
         ops.forEach(new JsonFileRepository(file())::saveOperation);
 
-        assertEquals(ops, new JsonFileRepository(file()).findAllOperations());
+        assertThat(new JsonFileRepository(file()).findAllOperations()).containsExactlyElementsOf(ops);
     }
 
     @Test
     void missingFileIsReadAsEmptyList() {
         var repo = new JsonFileRepository(file());
 
-        assertTrue(repo.findAllOperations().isEmpty());
+        assertThat(repo.findAllOperations()).isEmpty();
     }
 
     @Test
@@ -58,8 +56,9 @@ class JsonFileRepositoryTest {
         Files.writeString(file(), "[{\"kind\": \"INCOME\", \"id\": ");
         var repo = new JsonFileRepository(file());
 
-        var e = assertThrows(StorageException.class, repo::findAllOperations);
-        assertNotNull(e.getCause());
+        assertThatThrownBy(repo::findAllOperations)
+                .isInstanceOf(StorageException.class)
+                .cause().isNotNull();
     }
 
     @Test
@@ -71,8 +70,8 @@ class JsonFileRepositoryTest {
         }
 
         try (Stream<Path> files = Files.list(dir)) {
-            assertEquals(List.of(file()), files.toList());
+            assertThat(files).containsExactly(file());
         }
-        assertEquals(100, repo.findAllOperations().size());
+        assertThat(repo.findAllOperations()).hasSize(100);
     }
 }
