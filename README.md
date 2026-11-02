@@ -1,5 +1,7 @@
 # finance-console
 
+[![CI](https://github.com/Silkfinik/finance-console/actions/workflows/ci.yml/badge.svg)](https://github.com/Silkfinik/finance-console/actions/workflows/ci.yml)
+
 ## Стек
 
 - Java 25 (record-ы, sealed-интерфейсы, pattern matching в `switch`)
