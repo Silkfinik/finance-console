@@ -1,6 +1,7 @@
 package com.example.finance;
 
 import com.example.finance.domain.BalanceCalculator;
+import com.example.finance.report.ReportService;
 import com.example.finance.storage.JsonFileRepository;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -33,7 +34,8 @@ public class FinanceConsole {
         log.info("Запуск, файл данных: {}", dataPath.toAbsolutePath());
         var storage = new JsonFileRepository(dataPath);
         var printer = ConsolePrinter.stdout();
-        var handler = new CommandHandler(storage, storage, new BalanceCalculator(), printer, Clock.systemDefaultZone());
+        var handler = new CommandHandler(
+                storage, storage, new BalanceCalculator(), printer, Clock.system(ReportService.DEFAULT_ZONE));
         new FinanceConsole(handler, printer).run(new BufferedReader(new InputStreamReader(System.in)));
         log.info("Завершение работы");
     }

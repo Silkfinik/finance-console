@@ -1,139 +1,138 @@
 package com.example.finance.report;
 
-import com.example.finance.domain.Account;
-import com.example.finance.domain.CurrencyCode;
 import com.example.finance.domain.Expense;
 import com.example.finance.domain.Income;
 import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
-import com.example.finance.storage.AccountRepository;
-import com.example.finance.storage.OperationRepository;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
+import java.math.RoundingMode;
+import java.text.Collator;
+import java.time.DayOfWeek;
 import java.time.YearMonth;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class ReportService {
 
-    private final AccountRepository accounts;
-    private final OperationRepository operations;
+    public static final ZoneId DEFAULT_ZONE = ZoneId.of("Europe/Minsk");
+
+    private static final Locale RUSSIAN = Locale.of("ru");
+
     private final ZoneId zone;
 
-    public ReportService(AccountRepository accounts, OperationRepository operations, ZoneId zone) {
-        this.accounts = Objects.requireNonNull(accounts, "accounts не может быть null");
-        this.operations = Objects.requireNonNull(operations, "operations не может быть null");
+    public ReportService() {
+        this(DEFAULT_ZONE);
+    }
+
+    public ReportService(ZoneId zone) {
         this.zone = Objects.requireNonNull(zone, "zone не может быть null");
     }
 
-    public List<String> categories(YearMonth month) {
-        Map<UUID, Account> byId = accountsById();
-
-        Map<CurrencyCode, Map<String, BigDecimal>> totals = new TreeMap<>();
-        for (Expense e : expenses()) {
-            if (!monthOf(e.occurredAt()).equals(month)) {
-                continue;
-            }
-            CurrencyCode currency = byId.get(e.accountId()).currency();
-            totals.computeIfAbsent(currency, _ -> new TreeMap<>()).merge(e.category(), e.amount(), BigDecimal::add);
-        }
-
-        if (totals.isEmpty()) {
-            return List.of("Нет расходов за " + month);
-        }
-        List<String> lines = new ArrayList<>();
-        lines.add("Расходы по категориям за " + month + ":");
-        totals.forEach((currency, byCategory) -> byCategory.entrySet().stream()
-                .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
-                .forEach(entry -> lines.add("  " + entry.getKey() + ": " + format(entry.getValue()) + " " + currency)));
-        return lines;
+    public Map<String, BigDecimal> expensesByCategory(List<Operation> ops, YearMonth month) {
+        return expensesIn(ops, month).collect(Collectors.groupingBy(Expense::category, TreeMap::new, sumOfAmounts()));
     }
 
-    public List<String> top(int n) {
-        Map<UUID, Account> byId = accountsById();
-
-        List<Expense> top = expenses().stream()
+    public List<Expense> topExpenses(List<Operation> ops, int n) {
+        return expenses(ops)
                 .sorted(Comparator.comparing(Expense::amount).reversed().thenComparing(Expense::occurredAt))
                 .limit(n)
                 .toList();
-
-        if (top.isEmpty()) {
-            return List.of("Расходов нет");
-        }
-        List<String> lines = new ArrayList<>();
-        lines.add("Топ-" + n + " расходов:");
-        for (int i = 0; i < top.size(); i++) {
-            Expense e = top.get(i);
-            Account account = byId.get(e.accountId());
-            String line = "  " + (i + 1) + ". " + LocalDate.ofInstant(e.occurredAt(), zone)
-                    + " " + account.name() + " " + e.category()
-                    + " " + format(e.amount()) + " " + account.currency();
-            if (e.description() != null) {
-                line += " (" + e.description() + ")";
-            }
-            lines.add(line);
-        }
-        return lines;
     }
 
-    public List<String> monthly() {
-        Map<UUID, Account> byId = accountsById();
-
-        record MonthKey(YearMonth month, CurrencyCode currency) {}
-        Map<MonthKey, BigDecimal[]> totals =
-                new TreeMap<>(Comparator.comparing(MonthKey::month).thenComparing(MonthKey::currency));
-
-        for (Operation op : operations.findAllOperations()) {
-            int column = switch (op) {
-                case Income _ -> 0;
-                case Expense _ -> 1;
-                case Transfer _ -> -1;
-            };
-            if (column < 0) {
-                continue;
-            }
-            var key = new MonthKey(
-                    monthOf(op.occurredAt()), byId.get(op.accountId()).currency());
-            BigDecimal[] row = totals.computeIfAbsent(key, _ -> new BigDecimal[] {BigDecimal.ZERO, BigDecimal.ZERO});
-            row[column] = row[column].add(op.amount());
-        }
-
-        if (totals.isEmpty()) {
-            return List.of("Нет доходов и расходов");
-        }
-        List<String> lines = new ArrayList<>();
-        totals.forEach((key, row) -> lines.add(key.month() + " " + key.currency()
-                + ": доходы " + format(row[0])
-                + ", расходы " + format(row[1])
-                + ", итого " + format(row[0].subtract(row[1]))));
-        return lines;
+    public SortedMap<YearMonth, BigDecimal> monthlyNet(List<Operation> ops) {
+        return ops.stream()
+                .filter(op -> !(op instanceof Transfer))
+                .collect(Collectors.groupingBy(
+                        this::monthOf,
+                        TreeMap::new,
+                        Collectors.reducing(BigDecimal.ZERO, ReportService::signedAmount, BigDecimal::add)));
     }
 
-    private Map<UUID, Account> accountsById() {
-        return accounts.findAllAccounts().stream().collect(Collectors.toMap(Account::id, Function.identity()));
+    public Optional<Expense> largestExpense(List<Operation> ops) {
+        return topExpenses(ops, 1).stream().findFirst();
     }
 
-    private List<Expense> expenses() {
-        return operations.findAllOperations().stream()
-                .filter(Expense.class::isInstance)
-                .map(Expense.class::cast)
+    public BigDecimal averageExpense(List<Operation> ops, YearMonth month) {
+        List<Expense> expenses = expensesIn(ops, month).toList();
+        BigDecimal total = expenses.stream().collect(sumOfAmounts());
+        BigDecimal count = BigDecimal.valueOf(Math.max(1, expenses.size()));
+        return total.divide(count, 2, RoundingMode.HALF_EVEN);
+    }
+
+    public Map<DayOfWeek, Long> expenseCountByWeekday(List<Operation> ops) {
+        return expenses(ops)
+                .collect(Collectors.groupingBy(
+                        e -> e.occurredAt().atZone(zone).getDayOfWeek(),
+                        () -> new EnumMap<>(DayOfWeek.class),
+                        Collectors.counting()));
+    }
+
+    public Map<Boolean, List<Operation>> partitionByAmount(List<Operation> ops, BigDecimal threshold) {
+        Objects.requireNonNull(threshold, "threshold не может быть null");
+        return ops.stream().collect(Collectors.partitioningBy(op -> op.amount().compareTo(threshold) > 0));
+    }
+
+    public String categoriesJoined(List<Operation> ops) {
+        return categories(ops).distinct().sorted(Collator.getInstance(RUSSIAN)).collect(Collectors.joining(", "));
+    }
+
+    public Map<String, Long> countByCategory(List<Operation> ops) {
+        return categories(ops).collect(Collectors.groupingBy(Function.identity(), TreeMap::new, Collectors.counting()));
+    }
+
+    public List<YearMonth> monthsWithDeficit(List<Operation> ops) {
+        return monthlyNet(ops).entrySet().stream()
+                .filter(entry -> entry.getValue().signum() < 0)
+                .map(Map.Entry::getKey)
                 .toList();
     }
 
-    private YearMonth monthOf(Instant instant) {
-        return YearMonth.from(instant.atZone(zone));
+    private static Stream<Expense> expenses(List<Operation> ops) {
+        return ops.stream().filter(Expense.class::isInstance).map(Expense.class::cast);
     }
 
-    private static String format(BigDecimal amount) {
-        return amount.setScale(2).toPlainString();
+    private Stream<Expense> expensesIn(List<Operation> ops, YearMonth month) {
+        Objects.requireNonNull(month, "month не может быть null");
+        return expenses(ops).filter(e -> monthOf(e).equals(month));
+    }
+
+    private static Stream<String> categories(List<Operation> ops) {
+        return ops.stream().flatMap(op -> categoryOf(op).stream());
+    }
+
+    private static Optional<String> categoryOf(Operation op) {
+        return switch (op) {
+            case Income income -> Optional.of(income.category());
+            case Expense expense -> Optional.of(expense.category());
+            case Transfer _ -> Optional.empty();
+        };
+    }
+
+    private static BigDecimal signedAmount(Operation op) {
+        return switch (op) {
+            case Income income -> income.amount();
+            case Expense expense -> expense.amount().negate();
+            case Transfer _ -> BigDecimal.ZERO;
+        };
+    }
+
+    private static Collector<Operation, ?, BigDecimal> sumOfAmounts() {
+        return Collectors.reducing(BigDecimal.ZERO, Operation::amount, BigDecimal::add);
+    }
+
+    private YearMonth monthOf(Operation op) {
+        return YearMonth.from(op.occurredAt().atZone(zone));
     }
 }
