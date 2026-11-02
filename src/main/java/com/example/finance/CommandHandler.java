@@ -14,14 +14,17 @@ import com.example.finance.storage.StorageException;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +67,7 @@ public class CommandHandler {
         this.balanceCalculator = Objects.requireNonNull(balanceCalculator, "balanceCalculator не может быть null");
         this.out = Objects.requireNonNull(out, "out не может быть null");
         this.clock = Objects.requireNonNull(clock, "clock не может быть null");
-        this.reports = new ReportService(accounts, operations, clock.getZone());
+        this.reports = new ReportService(clock.getZone());
     }
 
     public boolean handle(String line) {
@@ -204,17 +207,67 @@ public class CommandHandler {
 
     private void reportCategories(String[] args) {
         requireArgCount(args, 1, 1, "report categories <yyyy-MM>");
-        reports.categories(parseMonth(args[0])).forEach(out::println);
+        YearMonth month = parseMonth(args[0]);
+        Map<CurrencyCode, Map<String, BigDecimal>> totals = new TreeMap<>();
+        operationsByCurrency().forEach((currency, ops) -> {
+            Map<String, BigDecimal> byCategory = reports.expensesByCategory(ops, month);
+            if (!byCategory.isEmpty()) {
+                totals.put(currency, byCategory);
+            }
+        });
+        if (totals.isEmpty()) {
+            out.println("Нет расходов за " + month);
+            return;
+        }
+        out.println("Расходы по категориям за " + month + ":");
+        totals.forEach((currency, byCategory) -> byCategory.entrySet().stream()
+                .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                .forEach(entry ->
+                        out.println("  " + entry.getKey() + ": " + format(entry.getValue()) + " " + currency)));
     }
 
     private void reportTop(String[] args) {
         requireArgCount(args, 1, 1, "report top <n>");
-        reports.top(parsePositiveInt(args[0])).forEach(out::println);
+        int n = parsePositiveInt(args[0]);
+        Map<UUID, Account> byId = accountsById();
+        List<Expense> top = reports.topExpenses(knownOperations(byId), n);
+        if (top.isEmpty()) {
+            out.println("Расходов нет");
+            return;
+        }
+        out.println("Топ-" + n + " расходов:");
+        for (int i = 0; i < top.size(); i++) {
+            Expense e = top.get(i);
+            Account account = byId.get(e.accountId());
+            String line = "  " + (i + 1) + ". " + LocalDate.ofInstant(e.occurredAt(), clock.getZone())
+                    + " " + account.name() + " " + e.category()
+                    + " " + format(e.amount()) + " " + account.currency();
+            out.println(e.description() == null ? line : line + " (" + e.description() + ")");
+        }
     }
 
     private void reportMonthly(String[] args) {
         requireArgCount(args, 0, 0, "report monthly");
-        reports.monthly().forEach(out::println);
+        Map<YearMonth, Map<CurrencyCode, String>> lines = new TreeMap<>();
+        operationsByCurrency().forEach((currency, ops) -> {
+            Map<YearMonth, BigDecimal> incomes = reports.monthlyNet(only(ops, Income.class));
+            Map<YearMonth, BigDecimal> expenses = reports.monthlyNet(only(ops, Expense.class));
+            reports.monthlyNet(ops)
+                    .forEach((month, net) -> lines.computeIfAbsent(month, _ -> new TreeMap<>())
+                            .put(
+                                    currency,
+                                    month + " " + currency
+                                            + ": доходы " + format(incomes.getOrDefault(month, BigDecimal.ZERO))
+                                            + ", расходы "
+                                            + format(expenses.getOrDefault(month, BigDecimal.ZERO)
+                                                    .negate())
+                                            + ", итого " + format(net)));
+        });
+        if (lines.isEmpty()) {
+            out.println("Нет доходов и расходов");
+            return;
+        }
+        lines.values().forEach(byCurrency -> byCurrency.values().forEach(out::println));
     }
 
     private void help(String[] args) {
@@ -299,6 +352,27 @@ public class CommandHandler {
                 .filter(a -> a.name().equals(name))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private Map<UUID, Account> accountsById() {
+        return accounts.findAllAccounts().stream().collect(Collectors.toMap(Account::id, Function.identity()));
+    }
+
+    private List<Operation> knownOperations(Map<UUID, Account> byId) {
+        return operations.findAllOperations().stream()
+                .filter(op -> byId.containsKey(op.accountId()))
+                .toList();
+    }
+
+    private Map<CurrencyCode, List<Operation>> operationsByCurrency() {
+        Map<UUID, Account> byId = accountsById();
+        return knownOperations(byId).stream()
+                .collect(Collectors.groupingBy(
+                        op -> byId.get(op.accountId()).currency(), TreeMap::new, Collectors.toList()));
+    }
+
+    private static List<Operation> only(List<Operation> ops, Class<? extends Operation> type) {
+        return ops.stream().filter(type::isInstance).toList();
     }
 
     private static String description(String[] args) {
