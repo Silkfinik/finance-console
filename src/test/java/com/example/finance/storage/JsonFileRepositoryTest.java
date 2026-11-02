@@ -1,12 +1,12 @@
 package com.example.finance.storage;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.example.finance.domain.Expense;
 import com.example.finance.domain.Income;
 import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -15,9 +15,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class JsonFileRepositoryTest {
 
@@ -58,7 +57,8 @@ class JsonFileRepositoryTest {
 
         assertThatThrownBy(repo::findAllOperations)
                 .isInstanceOf(StorageException.class)
-                .cause().isNotNull();
+                .cause()
+                .isNotNull();
     }
 
     @Test

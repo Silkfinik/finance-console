@@ -8,8 +8,7 @@ final class OperationRules {
     static final int MAX_SCALE = 2;
     static final int MAX_DESCRIPTION_LENGTH = 255;
 
-    private OperationRules() {
-    }
+    private OperationRules() {}
 
     static void requireValidAmount(BigDecimal amount) {
         Objects.requireNonNull(amount, "amount не может быть null");
@@ -27,9 +26,8 @@ final class OperationRules {
 
     static void requireValidDescription(String description) {
         if (description != null && description.length() > MAX_DESCRIPTION_LENGTH) {
-            throw new IllegalArgumentException(
-                    "Описание не может быть длиннее " + MAX_DESCRIPTION_LENGTH + " символов, получено: "
-                            + description.length());
+            throw new IllegalArgumentException("Описание не может быть длиннее " + MAX_DESCRIPTION_LENGTH
+                    + " символов, получено: " + description.length());
         }
     }
 }

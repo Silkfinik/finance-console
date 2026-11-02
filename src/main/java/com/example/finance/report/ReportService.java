@@ -8,7 +8,6 @@ import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
 import com.example.finance.storage.AccountRepository;
 import com.example.finance.storage.OperationRepository;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,8 +44,7 @@ public class ReportService {
                 continue;
             }
             CurrencyCode currency = byId.get(e.accountId()).currency();
-            totals.computeIfAbsent(currency, _ -> new TreeMap<>())
-                    .merge(e.category(), e.amount(), BigDecimal::add);
+            totals.computeIfAbsent(currency, _ -> new TreeMap<>()).merge(e.category(), e.amount(), BigDecimal::add);
         }
 
         if (totals.isEmpty()) {
@@ -56,8 +54,7 @@ public class ReportService {
         lines.add("Расходы по категориям за " + month + ":");
         totals.forEach((currency, byCategory) -> byCategory.entrySet().stream()
                 .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
-                .forEach(entry -> lines.add("  " + entry.getKey() + ": "
-                        + format(entry.getValue()) + " " + currency)));
+                .forEach(entry -> lines.add("  " + entry.getKey() + ": " + format(entry.getValue()) + " " + currency)));
         return lines;
     }
 
@@ -65,8 +62,7 @@ public class ReportService {
         Map<UUID, Account> byId = accountsById();
 
         List<Expense> top = expenses().stream()
-                .sorted(Comparator.comparing(Expense::amount).reversed()
-                        .thenComparing(Expense::occurredAt))
+                .sorted(Comparator.comparing(Expense::amount).reversed().thenComparing(Expense::occurredAt))
                 .limit(n)
                 .toList();
 
@@ -92,11 +88,9 @@ public class ReportService {
     public List<String> monthly() {
         Map<UUID, Account> byId = accountsById();
 
-        record MonthKey(YearMonth month, CurrencyCode currency) {
-        }
-        Map<MonthKey, BigDecimal[]> totals = new TreeMap<>(Comparator
-                .comparing(MonthKey::month)
-                .thenComparing(MonthKey::currency));
+        record MonthKey(YearMonth month, CurrencyCode currency) {}
+        Map<MonthKey, BigDecimal[]> totals =
+                new TreeMap<>(Comparator.comparing(MonthKey::month).thenComparing(MonthKey::currency));
 
         for (Operation op : operations.findAllOperations()) {
             int column = switch (op) {
@@ -107,8 +101,9 @@ public class ReportService {
             if (column < 0) {
                 continue;
             }
-            var key = new MonthKey(monthOf(op.occurredAt()), byId.get(op.accountId()).currency());
-            BigDecimal[] row = totals.computeIfAbsent(key, _ -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            var key = new MonthKey(
+                    monthOf(op.occurredAt()), byId.get(op.accountId()).currency());
+            BigDecimal[] row = totals.computeIfAbsent(key, _ -> new BigDecimal[] {BigDecimal.ZERO, BigDecimal.ZERO});
             row[column] = row[column].add(op.amount());
         }
 
@@ -124,8 +119,7 @@ public class ReportService {
     }
 
     private Map<UUID, Account> accountsById() {
-        return accounts.findAllAccounts().stream()
-                .collect(Collectors.toMap(Account::id, Function.identity()));
+        return accounts.findAllAccounts().stream().collect(Collectors.toMap(Account::id, Function.identity()));
     }
 
     private List<Expense> expenses() {

@@ -7,7 +7,10 @@
 - Java 25 (record-ы, sealed-интерфейсы, pattern matching в `switch`)
 - Gradle 9.6 (Kotlin DSL, плагин `application`)
 - Jackson 3.2: хранение данных в JSON
-- JUnit 6: тесты
+- SLF4J + Logback: диагностический лог
+- JUnit 6, AssertJ, Mockito: тесты
+- JaCoCo: покрытие, Spotless (palantir-java-format): форматирование. Исправить
+  форматирование: `./gradlew spotlessApply`
 
 ## Запуск
 
@@ -18,6 +21,10 @@ build/install/finance-console/bin/finance-console
 
 Данные хранятся в `~/.finance-console/data.json`. Другой файл можно задать
 переменной окружения `FINANCE_DATA`.
+
+Диагностический лог пишется в `~/.finance-console/finance-console.log`, другой
+файл можно задать переменной окружения `FINANCE_LOG`. В консоль выводится только
+то, что предназначено пользователю.
 
 ### Пример сеанса
 
@@ -59,7 +66,7 @@ savings 500.00 BYN
 ### Исчерпывающий switch в `BalanceCalculator`
 
 `Operation` - sealed-интерфейс (`permits Income, Expense, Transfer`), а `BalanceCalculator`
-разбирает операции через `switch` с record patterns без ветки `default`. Поэтому компилятор
+разбирает операции через `switch` по типу операции без ветки `default`. Поэтому компилятор
 сам следит, что учтены все виды операций.
 
 Проверено: временно добавлена четвёртая реализация

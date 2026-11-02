@@ -1,5 +1,12 @@
 package com.example.finance;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.type;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.example.finance.domain.Account;
 import com.example.finance.domain.BalanceCalculator;
 import com.example.finance.domain.CurrencyCode;
@@ -9,6 +16,14 @@ import com.example.finance.domain.Operation;
 import com.example.finance.storage.InMemoryAccountRepository;
 import com.example.finance.storage.InMemoryOperationRepository;
 import com.example.finance.storage.OperationRepository;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -18,26 +33,10 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.math.BigDecimal;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.UUID;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.InstanceOfAssertFactories.type;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 class CommandHandlerTest {
 
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-    private final PrintStream out = new PrintStream(buffer, true, UTF_8);
+    private final ConsolePrinter out = new ConsolePrinter(new PrintStream(buffer, true, UTF_8));
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC);
 
     private final InMemoryAccountRepository accounts = new InMemoryAccountRepository();
@@ -78,8 +77,7 @@ class CommandHandlerTest {
     void incomeSavesOperationWithDescription() {
         exec("account add main BYN");
 
-        assertThat(exec("income main 1000 Зарплата премия за октябрь"))
-                .containsExactly("Доход записан: 1000.00 BYN");
+        assertThat(exec("income main 1000 Зарплата премия за октябрь")).containsExactly("Доход записан: 1000.00 BYN");
 
         assertThat(operations.findAllOperations())
                 .singleElement()
@@ -130,10 +128,8 @@ class CommandHandlerTest {
         exec("expense main 50 Продукты");
         exec("expense main 300 Аренда");
 
-        assertThat(exec("report categories 2026-10")).containsExactly(
-                "Расходы по категориям за 2026-10:",
-                "  Аренда: 300.00 BYN",
-                "  Продукты: 250.00 BYN");
+        assertThat(exec("report categories 2026-10"))
+                .containsExactly("Расходы по категориям за 2026-10:", "  Аренда: 300.00 BYN", "  Продукты: 250.00 BYN");
         assertThat(exec("report categories 2026-09")).containsExactly("Нет расходов за 2026-09");
     }
 
@@ -145,10 +141,11 @@ class CommandHandlerTest {
         exec("expense main 300 Аренда");
         exec("expense main 50 Кафе обед");
 
-        assertThat(exec("report top 2")).containsExactly(
-                "Топ-2 расходов:",
-                "  1. 2026-10-15 main Аренда 300.00 BYN",
-                "  2. 2026-10-15 main Кафе 50.00 BYN (обед)");
+        assertThat(exec("report top 2"))
+                .containsExactly(
+                        "Топ-2 расходов:",
+                        "  1. 2026-10-15 main Аренда 300.00 BYN",
+                        "  2. 2026-10-15 main Кафе 50.00 BYN (обед)");
     }
 
     @Test
@@ -159,8 +156,7 @@ class CommandHandlerTest {
         exec("expense main 250 Продукты");
         exec("transfer main card 100");
 
-        assertThat(exec("report monthly"))
-                .containsExactly("2026-10 BYN: доходы 1000.00, расходы 250.00, итого 750.00");
+        assertThat(exec("report monthly")).containsExactly("2026-10 BYN: доходы 1000.00, расходы 250.00, итого 750.00");
     }
 
     @Test
@@ -186,9 +182,14 @@ class CommandHandlerTest {
         @Test
         void expenseSavesExactlyOneExpenseWithParsedFields() {
             accounts.saveAccount(account);
-            when(mockedOperations.findAllOperations()).thenReturn(List.of(
-                    new Income(UUID.randomUUID(), account.id(), new BigDecimal("100.00"),
-                            "Зарплата", clock.instant(), null)));
+            when(mockedOperations.findAllOperations())
+                    .thenReturn(List.of(new Income(
+                            UUID.randomUUID(),
+                            account.id(),
+                            new BigDecimal("100.00"),
+                            "Зарплата",
+                            clock.instant(),
+                            null)));
             var mockedHandler = new CommandHandler(accounts, mockedOperations, new BalanceCalculator(), out, clock);
 
             mockedHandler.handle("expense main 30,5 Кафе обед с коллегами");
@@ -197,10 +198,14 @@ class CommandHandlerTest {
             assertThat(saved.getValue())
                     .asInstanceOf(type(Expense.class))
                     .satisfies(expense -> assertThat(expense.id()).isNotNull())
-                    .extracting(Expense::accountId, Expense::amount, Expense::category,
-                            Expense::occurredAt, Expense::description)
-                    .containsExactly(account.id(), new BigDecimal("30.50"), "Кафе",
-                            clock.instant(), "обед с коллегами");
+                    .extracting(
+                            Expense::accountId,
+                            Expense::amount,
+                            Expense::category,
+                            Expense::occurredAt,
+                            Expense::description)
+                    .containsExactly(
+                            account.id(), new BigDecimal("30.50"), "Кафе", clock.instant(), "обед с коллегами");
         }
     }
 }

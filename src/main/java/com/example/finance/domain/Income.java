@@ -5,8 +5,9 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-public record Income (UUID id, UUID accountId, BigDecimal amount,
-                      String category, Instant occurredAt, String description) implements Operation {
+public record Income(
+        UUID id, UUID accountId, BigDecimal amount, String category, Instant occurredAt, String description)
+        implements Operation {
     public Income {
         Objects.requireNonNull(id, "id не может быть null");
         Objects.requireNonNull(accountId, "accountId не может быть null");
