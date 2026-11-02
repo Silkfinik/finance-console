@@ -7,6 +7,7 @@ import com.example.finance.domain.Expense;
 import com.example.finance.domain.Income;
 import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
+import com.example.finance.report.ReportService;
 import com.example.finance.storage.AccountRepository;
 import com.example.finance.storage.OperationRepository;
 import com.example.finance.storage.StorageException;
@@ -15,18 +16,14 @@ import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class CommandHandler {
@@ -52,6 +49,7 @@ public class CommandHandler {
     private final BalanceCalculator balanceCalculator;
     private final PrintStream out;
     private final Clock clock;
+    private final ReportService reports;
 
     public CommandHandler(AccountRepository accounts, OperationRepository operations,
                           BalanceCalculator balanceCalculator, PrintStream out, Clock clock) {
@@ -60,6 +58,7 @@ public class CommandHandler {
         this.balanceCalculator = Objects.requireNonNull(balanceCalculator, "balanceCalculator не может быть null");
         this.out = Objects.requireNonNull(out, "out не может быть null");
         this.clock = Objects.requireNonNull(clock, "clock не может быть null");
+        this.reports = new ReportService(accounts, operations, clock.getZone());
     }
 
     public boolean handle(String line) {
@@ -188,91 +187,17 @@ public class CommandHandler {
 
     private void reportCategories(String[] args) {
         requireArgCount(args, 1, 1, "report categories <yyyy-MM>");
-        YearMonth month = parseMonth(args[0]);
-        Map<UUID, Account> byId = accountsById();
-
-        Map<CurrencyCode, Map<String, BigDecimal>> totals = new TreeMap<>();
-        for (Expense e : expenses()) {
-            if (!monthOf(e.occurredAt()).equals(month)) {
-                continue;
-            }
-            CurrencyCode currency = byId.get(e.accountId()).currency();
-            totals.computeIfAbsent(currency, _ -> new TreeMap<>())
-                    .merge(e.category(), e.amount(), BigDecimal::add);
-        }
-
-        if (totals.isEmpty()) {
-            out.println("Нет расходов за " + month);
-            return;
-        }
-        out.println("Расходы по категориям за " + month + ":");
-        totals.forEach((currency, byCategory) -> byCategory.entrySet().stream()
-                .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
-                .forEach(entry -> out.println("  " + entry.getKey() + ": "
-                        + format(entry.getValue()) + " " + currency)));
+        reports.categories(parseMonth(args[0])).forEach(out::println);
     }
 
     private void reportTop(String[] args) {
         requireArgCount(args, 1, 1, "report top <n>");
-        int n = parsePositiveInt(args[0]);
-        Map<UUID, Account> byId = accountsById();
-
-        List<Expense> top = expenses().stream()
-                .sorted(Comparator.comparing(Expense::amount).reversed()
-                        .thenComparing(Expense::occurredAt))
-                .limit(n)
-                .toList();
-
-        if (top.isEmpty()) {
-            out.println("Расходов нет");
-            return;
-        }
-        out.println("Топ-" + n + " расходов:");
-        for (int i = 0; i < top.size(); i++) {
-            Expense e = top.get(i);
-            Account account = byId.get(e.accountId());
-            String line = "  " + (i + 1) + ". " + LocalDate.ofInstant(e.occurredAt(), clock.getZone())
-                    + " " + account.name() + " " + e.category()
-                    + " " + format(e.amount()) + " " + account.currency();
-            if (e.description() != null) {
-                line += " (" + e.description() + ")";
-            }
-            out.println(line);
-        }
+        reports.top(parsePositiveInt(args[0])).forEach(out::println);
     }
 
     private void reportMonthly(String[] args) {
         requireArgCount(args, 0, 0, "report monthly");
-        Map<UUID, Account> byId = accountsById();
-
-        record MonthKey(YearMonth month, CurrencyCode currency) {
-        }
-        Map<MonthKey, BigDecimal[]> totals = new TreeMap<>(Comparator
-                .comparing(MonthKey::month)
-                .thenComparing(MonthKey::currency));
-
-        for (Operation op : operations.findAllOperations()) {
-            int column = switch (op) {
-                case Income _ -> 0;
-                case Expense _ -> 1;
-                case Transfer _ -> -1;
-            };
-            if (column < 0) {
-                continue;
-            }
-            var key = new MonthKey(monthOf(op.occurredAt()), byId.get(op.accountId()).currency());
-            BigDecimal[] row = totals.computeIfAbsent(key, _ -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
-            row[column] = row[column].add(op.amount());
-        }
-
-        if (totals.isEmpty()) {
-            out.println("Нет доходов и расходов");
-            return;
-        }
-        totals.forEach((key, row) -> out.println(key.month() + " " + key.currency()
-                + ": доходы " + format(row[0])
-                + ", расходы " + format(row[1])
-                + ", итого " + format(row[0].subtract(row[1]))));
+        reports.monthly().forEach(out::println);
     }
 
     private void help(String[] args) {
@@ -359,28 +284,12 @@ public class CommandHandler {
                 .orElse(null);
     }
 
-    private Map<UUID, Account> accountsById() {
-        return accounts.findAllAccounts().stream()
-                .collect(Collectors.toMap(Account::id, Function.identity()));
-    }
-
-    private List<Expense> expenses() {
-        return operations.findAllOperations().stream()
-                .filter(Expense.class::isInstance)
-                .map(Expense.class::cast)
-                .toList();
-    }
-
     private static String description(String[] args) {
         return args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : null;
     }
 
     private Instant now() {
         return clock.instant();
-    }
-
-    private YearMonth monthOf(Instant instant) {
-        return YearMonth.from(instant.atZone(clock.getZone()));
     }
 
     private static String format(BigDecimal amount) {
