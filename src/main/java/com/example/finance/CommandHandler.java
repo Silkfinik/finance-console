@@ -11,8 +11,6 @@ import com.example.finance.report.ReportService;
 import com.example.finance.storage.AccountRepository;
 import com.example.finance.storage.OperationRepository;
 import com.example.finance.storage.StorageException;
-
-import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,8 +23,12 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CommandHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(CommandHandler.class);
 
     static final String INSUFFICIENT_FUNDS = "Недостаточно средств";
 
@@ -47,12 +49,16 @@ public class CommandHandler {
     private final AccountRepository accounts;
     private final OperationRepository operations;
     private final BalanceCalculator balanceCalculator;
-    private final PrintStream out;
+    private final ConsolePrinter out;
     private final Clock clock;
     private final ReportService reports;
 
-    public CommandHandler(AccountRepository accounts, OperationRepository operations,
-                          BalanceCalculator balanceCalculator, PrintStream out, Clock clock) {
+    public CommandHandler(
+            AccountRepository accounts,
+            OperationRepository operations,
+            BalanceCalculator balanceCalculator,
+            ConsolePrinter out,
+            Clock clock) {
         this.accounts = Objects.requireNonNull(accounts, "accounts не может быть null");
         this.operations = Objects.requireNonNull(operations, "operations не может быть null");
         this.balanceCalculator = Objects.requireNonNull(balanceCalculator, "balanceCalculator не может быть null");
@@ -66,11 +72,14 @@ public class CommandHandler {
         if (trimmed.isEmpty()) {
             return true;
         }
+        log.debug("Команда: {}", trimmed);
         try {
             return dispatch(trimmed.split("\\s+"));
         } catch (InputException | IllegalArgumentException e) {
+            log.debug("Команда отклонена: {}", e.getMessage());
             out.println("Ошибка: " + e.getMessage());
         } catch (StorageException e) {
+            log.error("Ошибка хранилища при выполнении команды: {}", trimmed, e);
             out.println("Ошибка хранилища: " + e.getMessage());
         }
         return true;
@@ -80,13 +89,21 @@ public class CommandHandler {
         String command = tokens[0];
         String[] args = Arrays.copyOfRange(tokens, 1, tokens.length);
         switch (command) {
-            case "account" -> dispatchSubcommand(command, args, Map.of(
-                    "add", this::accountAdd,
-                    "list", this::accountList));
-            case "report" -> dispatchSubcommand(command, args, Map.of(
-                    "categories", this::reportCategories,
-                    "top", this::reportTop,
-                    "monthly", this::reportMonthly));
+            case "account" ->
+                dispatchSubcommand(
+                        command,
+                        args,
+                        Map.of(
+                                "add", this::accountAdd,
+                                "list", this::accountList));
+            case "report" ->
+                dispatchSubcommand(
+                        command,
+                        args,
+                        Map.of(
+                                "categories", this::reportCategories,
+                                "top", this::reportTop,
+                                "monthly", this::reportMonthly));
             case "income" -> income(args);
             case "expense" -> expense(args);
             case "transfer" -> transfer(args);
@@ -168,14 +185,14 @@ public class CommandHandler {
             throw new InputException("Нельзя перевести деньги на тот же счёт: " + from.name());
         }
         if (from.currency() != to.currency()) {
-            throw new InputException("Перевод между счетами в разных валютах не поддерживается: "
-                    + from.currency() + " -> " + to.currency());
+            throw new InputException("Перевод между счетами в разных валютах не поддерживается: " + from.currency()
+                    + " -> " + to.currency());
         }
         var transfer = new Transfer(UUID.randomUUID(), from.id(), to.id(), amount, now());
         requireSufficientFunds(from, transfer.amount());
         operations.saveOperation(transfer);
-        out.println("Перевод выполнен: " + format(transfer.amount()) + " " + from.currency()
-                + " " + from.name() + " -> " + to.name());
+        out.println("Перевод выполнен: " + format(transfer.amount()) + " " + from.currency() + " " + from.name()
+                + " -> " + to.name());
     }
 
     private void balance(String[] args) {

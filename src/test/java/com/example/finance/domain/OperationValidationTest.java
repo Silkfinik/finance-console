@@ -1,22 +1,21 @@
 package com.example.finance.domain;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class OperationValidationTest {
 
     private static Income income(String amount, String description) {
-        return new Income(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal(amount),
-                "Зарплата", Instant.now(), description);
+        return new Income(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal(amount), "Зарплата", Instant.now(), description);
     }
 
     @ParameterizedTest(name = "[{index}] {arguments}")
@@ -43,16 +42,15 @@ class OperationValidationTest {
 
     @Test
     void descriptionMustNotExceed255Characters() {
-        assertThatThrownBy(() -> income("10.00", "a".repeat(256)))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> income("10.00", "a".repeat(256))).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void transferMustHaveDifferentAccounts() {
         UUID account = UUID.randomUUID();
 
-        assertThatThrownBy(() -> new Transfer(UUID.randomUUID(), account, account,
-                new BigDecimal("10.00"), Instant.now()))
+        assertThatThrownBy(
+                        () -> new Transfer(UUID.randomUUID(), account, account, new BigDecimal("10.00"), Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

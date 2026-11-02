@@ -5,8 +5,8 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-public record Transfer(UUID id, UUID accountId, UUID targetAccountId,
-                       BigDecimal amount, Instant occurredAt) implements Operation {
+public record Transfer(UUID id, UUID accountId, UUID targetAccountId, BigDecimal amount, Instant occurredAt)
+        implements Operation {
     public Transfer {
         Objects.requireNonNull(id, "id не может быть null");
         Objects.requireNonNull(accountId, "accountId не может быть null");

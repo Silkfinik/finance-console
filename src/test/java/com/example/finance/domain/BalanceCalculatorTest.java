@@ -1,14 +1,13 @@
 package com.example.finance.domain;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 class BalanceCalculatorTest {
 
@@ -36,9 +35,7 @@ class BalanceCalculatorTest {
 
         @Test
         void addsAmountToItsAccountOnly() {
-            List<Operation> ops = List.of(
-                    income(accountA, "1000.00"),
-                    income(accountB, "999.99"));
+            List<Operation> ops = List.of(income(accountA, "1000.00"), income(accountB, "999.99"));
 
             assertThat(calculator.balanceOf(accountA, ops)).isEqualTo(new BigDecimal("1000.00"));
         }
@@ -49,9 +46,7 @@ class BalanceCalculatorTest {
 
         @Test
         void subtractsAmountFromItsAccount() {
-            List<Operation> ops = List.of(
-                    income(accountA, "1000.00"),
-                    expense(accountA, "250.50"));
+            List<Operation> ops = List.of(income(accountA, "1000.00"), expense(accountA, "250.50"));
 
             assertThat(calculator.balanceOf(accountA, ops)).isEqualTo(new BigDecimal("749.50"));
         }
@@ -62,18 +57,14 @@ class BalanceCalculatorTest {
 
         @Test
         void subtractsFromSourceAccount() {
-            List<Operation> ops = List.of(
-                    income(accountA, "1000.00"),
-                    transfer(accountA, accountB, "300.00"));
+            List<Operation> ops = List.of(income(accountA, "1000.00"), transfer(accountA, accountB, "300.00"));
 
             assertThat(calculator.balanceOf(accountA, ops)).isEqualTo(new BigDecimal("700.00"));
         }
 
         @Test
         void addsToTargetAccount() {
-            List<Operation> ops = List.of(
-                    income(accountB, "50.00"),
-                    transfer(accountA, accountB, "300.00"));
+            List<Operation> ops = List.of(income(accountB, "50.00"), transfer(accountA, accountB, "300.00"));
 
             assertThat(calculator.balanceOf(accountB, ops)).isEqualTo(new BigDecimal("350.00"));
         }

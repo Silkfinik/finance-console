@@ -18,16 +18,15 @@ public class BalanceCalculator {
 
     private BigDecimal deltaFor(UUID accountId, Operation op) {
         return switch (op) {
-            case Income(_, UUID account, BigDecimal amount, _, _, _) ->
-                    account.equals(accountId) ? amount : BigDecimal.ZERO;
-            case Expense(_, UUID account, BigDecimal amount, _, _, _) ->
-                    account.equals(accountId) ? amount.negate() : BigDecimal.ZERO;
-            case Transfer(_, UUID source, UUID target, BigDecimal amount, _) -> {
-                if (source.equals(accountId)) {
-                    yield amount.negate();
+            case Income income -> income.accountId().equals(accountId) ? income.amount() : BigDecimal.ZERO;
+            case Expense expense ->
+                expense.accountId().equals(accountId) ? expense.amount().negate() : BigDecimal.ZERO;
+            case Transfer transfer -> {
+                if (transfer.accountId().equals(accountId)) {
+                    yield transfer.amount().negate();
                 }
-                if (target.equals(accountId)) {
-                    yield amount;
+                if (transfer.targetAccountId().equals(accountId)) {
+                    yield transfer.amount();
                 }
                 yield BigDecimal.ZERO;
             }

@@ -2,6 +2,7 @@ plugins {
     id("java")
     application
     jacoco
+    alias(libs.plugins.spotless)
 }
 
 application {
@@ -25,6 +26,8 @@ val mockitoAgent = configurations.create("mockitoAgent")
 
 dependencies {
     implementation(libs.jackson.databind)
+    implementation(libs.slf4j.api)
+    runtimeOnly(libs.logback.classic)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -43,6 +46,12 @@ tasks.test {
     useJUnitPlatform()
     jvmArgs("-javaagent:${mockitoAgent.asPath}")
     finalizedBy(tasks.jacocoTestReport)
+}
+
+spotless {
+    java {
+        palantirJavaFormat(libs.versions.palantir.java.format.get())
+    }
 }
 
 jacoco {

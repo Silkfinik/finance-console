@@ -25,6 +25,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Check formatting
+        run: ./gradlew spotlessCheck
+
       - name: Build
         run: ./gradlew build
 

@@ -1,11 +1,11 @@
 package com.example.finance;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.example.finance.domain.BalanceCalculator;
 import com.example.finance.storage.InMemoryAccountRepository;
 import com.example.finance.storage.InMemoryOperationRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -14,9 +14,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class FinanceConsoleTest {
 
@@ -30,7 +29,7 @@ class FinanceConsoleTest {
 
     @BeforeEach
     void setUp() {
-        var out = new PrintStream(buffer, true, UTF_8);
+        var out = new ConsolePrinter(new PrintStream(buffer, true, UTF_8));
         handler = new CommandHandler(accounts, operations, new BalanceCalculator(), out, clock);
         console = new FinanceConsole(handler, out);
     }
