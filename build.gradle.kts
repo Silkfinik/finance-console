@@ -20,16 +20,27 @@ repositories {
     mavenCentral()
 }
 
-dependencies {
-    implementation("tools.jackson.core:jackson-databind:3.2.4")
+val mockitoAgent = configurations.create("mockitoAgent")
 
-    testImplementation(platform("org.junit:junit-bom:6.0.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+dependencies {
+    implementation(libs.jackson.databind)
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+
+    testImplementation(libs.assertj.core)
+
+    testImplementation(platform(libs.mockito.bom))
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.junit.jupiter)
+    mockitoAgent(platform(libs.mockito.bom))
+    mockitoAgent(libs.mockito.core) { isTransitive = false }
 }
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("-javaagent:${mockitoAgent.asPath}")
 }
 
 tasks.named<JavaExec>("run") {
