@@ -8,6 +8,7 @@
 - Gradle 9.6 (Kotlin DSL, плагин `application`)
 - Jackson 3.2: хранение данных в JSON
 - PostgreSQL 18, JDBC + HikariCP, Flyway: хранилище в базе (включается отдельно)
+- Redis 8, Lettuce: кэш балансов для хранилища в базе
 - SLF4J + Logback: диагностический лог
 - JUnit 6, AssertJ, Mockito, Testcontainers: тесты
 - JaCoCo: покрытие, Spotless (palantir-java-format): форматирование. Исправить
@@ -43,6 +44,19 @@ FINANCE_STORAGE=postgres build/install/finance-console/bin/finance-console
 списывается одним условным `UPDATE ... WHERE id = ? AND balance >= ?` в той же
 транзакции, что и вставка операции, поэтому одновременные расходы не уводят
 баланс в минус.
+
+### Кэш балансов в Redis
+
+С хранилищем PostgreSQL команда `balance` читает баланс через
+`CachedBalanceService` по схеме cache-aside: сначала ключ `balance:{accountId}`
+в Redis, при промахе колонка `accounts.balance`, и значение кладётся в Redis
+строкой с TTL 60 секунд. После commit дохода, расхода или перевода ключи
+затронутых счетов удаляются. Адрес Redis задаётся переменной
+`FINANCE_REDIS_URL`, по умолчанию `redis://localhost:6379`, как в
+`compose.yaml`.
+
+Если Redis недоступен, баланс читается из PostgreSQL, а ошибка пишется в лог
+уровня WARN. Число попаданий и промахов кэша пишется в лог при выходе.
 
 Диагностический лог пишется в `~/.finance-console/finance-console.log`, другой
 файл можно задать переменной окружения `FINANCE_LOG`. В консоль выводится только
