@@ -5,6 +5,7 @@ import com.example.finance.domain.BalanceCalculator;
 import com.example.finance.domain.CurrencyCode;
 import com.example.finance.domain.Expense;
 import com.example.finance.domain.Income;
+import com.example.finance.domain.InsufficientFundsException;
 import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
 import com.example.finance.report.ReportService;
@@ -81,6 +82,9 @@ public class CommandHandler {
         } catch (InputException | IllegalArgumentException e) {
             log.debug("Команда отклонена: {}", e.getMessage());
             out.println("Ошибка: " + e.getMessage());
+        } catch (InsufficientFundsException e) {
+            log.debug("Команда отклонена хранилищем: {}", e.getMessage());
+            out.println("Ошибка: " + INSUFFICIENT_FUNDS);
         } catch (StorageException e) {
             log.error("Ошибка хранилища при выполнении команды: {}", trimmed, e);
             out.println("Ошибка хранилища: " + e.getMessage());

@@ -7,8 +7,9 @@
 - Java 25 (record-ы, sealed-интерфейсы, pattern matching в `switch`)
 - Gradle 9.6 (Kotlin DSL, плагин `application`)
 - Jackson 3.2: хранение данных в JSON
+- PostgreSQL 18, JDBC + HikariCP, Flyway: хранилище в базе (включается отдельно)
 - SLF4J + Logback: диагностический лог
-- JUnit 6, AssertJ, Mockito: тесты
+- JUnit 6, AssertJ, Mockito, Testcontainers: тесты
 - JaCoCo: покрытие, Spotless (palantir-java-format): форматирование. Исправить
   форматирование: `./gradlew spotlessApply`
 
@@ -21,6 +22,27 @@ build/install/finance-console/bin/finance-console
 
 Данные хранятся в `~/.finance-console/data.json`. Другой файл можно задать
 переменной окружения `FINANCE_DATA`.
+
+### Хранилище PostgreSQL
+
+По умолчанию данные хранятся в JSON. Переменная `FINANCE_STORAGE=postgres`
+включает хранилище в PostgreSQL:
+
+```bash
+docker compose up -d
+FINANCE_STORAGE=postgres build/install/finance-console/bin/finance-console
+```
+
+Подключение задаётся переменными `FINANCE_DB_URL`, `FINANCE_DB_USER`,
+`FINANCE_DB_PASSWORD`; по умолчанию `jdbc:postgresql://localhost:5432/finance`,
+пользователь и пароль `finance`, как в `compose.yaml`. При запуске Flyway
+применяет миграции из `src/main/resources/db/migration`. Счета принадлежат
+локальному пользователю из миграции `V4__local_user.sql`.
+
+Пул HikariCP: `maximumPoolSize = 10`, `connectionTimeout = 3000` мс. Расход
+списывается одним условным `UPDATE ... WHERE id = ? AND balance >= ?` в той же
+транзакции, что и вставка операции, поэтому одновременные расходы не уводят
+баланс в минус.
 
 Диагностический лог пишется в `~/.finance-console/finance-console.log`, другой
 файл можно задать переменной окружения `FINANCE_LOG`. В консоль выводится только
@@ -81,3 +103,19 @@ BalanceCalculator.java:20: error: the switch expression does not cover all possi
 ```
 
 Вывод: новую операцию невозможно добавить, не обработав её в расчёте баланса.
+
+### Пакетная вставка операций
+
+`JdbcRepositoryTest.insertAllIsAtLeastFiveTimesFasterThanOneByOne` вставляет
+10 000 доходов через `insertAll` (одна транзакция, `addBatch` пачками по 500,
+драйвер с `reWriteBatchedInserts=true`) и ещё 10 000 по одной через
+`saveOperation` (на каждую операцию своя транзакция: `UPDATE` баланса, поиск
+категории, `INSERT`, `COMMIT`). Перед замером прогрев. Postgres 18 в
+Testcontainers, локальный Docker:
+
+| Способ                   | Время, мс |
+|--------------------------|----------:|
+| `insertAll`              |       446 |
+| `saveOperation` по одной |    12 149 |
+
+`insertAll` быстрее в 27 раз. Тест падает, если разница меньше 5 раз.

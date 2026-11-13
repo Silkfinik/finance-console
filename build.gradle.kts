@@ -27,6 +27,10 @@ val mockitoAgent = configurations.create("mockitoAgent")
 dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.slf4j.api)
+    implementation(libs.hikaricp)
+    implementation(libs.flyway.core)
+    runtimeOnly(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
     runtimeOnly(libs.logback.classic)
 
     testImplementation(platform(libs.junit.bom))
@@ -34,6 +38,9 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 
     testImplementation(libs.assertj.core)
+
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
 
     testImplementation(platform(libs.mockito.bom))
     testImplementation(libs.mockito.core)
