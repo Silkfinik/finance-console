@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 
-public class JdbcAccountRepository implements AccountRepository {
+public class JdbcAccountRepository implements AccountRepository, BalanceReader {
 
     private static final String INSERT = "INSERT INTO accounts (id, user_id, name, currency) VALUES (?, ?, ?, ?)";
     private static final String SELECT_ALL =
@@ -65,6 +65,7 @@ public class JdbcAccountRepository implements AccountRepository {
     }
 
     /** Баланс из колонки accounts.balance, которую ведёт {@link JdbcOperationRepository}. */
+    @Override
     public Optional<BigDecimal> findBalance(UUID accountId) {
         Objects.requireNonNull(accountId, "accountId не может быть null");
         try (Connection c = dataSource.getConnection();

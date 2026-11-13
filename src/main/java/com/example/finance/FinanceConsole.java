@@ -1,14 +1,18 @@
 package com.example.finance;
 
+import com.example.finance.cache.CachedBalanceService;
+import com.example.finance.cache.Redis;
 import com.example.finance.domain.BalanceCalculator;
 import com.example.finance.report.ReportService;
 import com.example.finance.storage.AccountRepository;
+import com.example.finance.storage.BalanceReader;
 import com.example.finance.storage.Database;
 import com.example.finance.storage.JdbcAccountRepository;
 import com.example.finance.storage.JdbcOperationRepository;
 import com.example.finance.storage.JsonFileRepository;
 import com.example.finance.storage.OperationRepository;
 import com.zaxxer.hikari.HikariDataSource;
+import io.lettuce.core.RedisClient;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -35,6 +39,9 @@ public class FinanceConsole {
     static final String DEFAULT_DB_USER = "finance";
     static final String DEFAULT_DB_PASSWORD = "finance";
 
+    static final String REDIS_URL_ENV = "FINANCE_REDIS_URL";
+    static final String DEFAULT_REDIS_URL = "redis://localhost:6379";
+
     enum Storage {
         JSON,
         POSTGRES
@@ -56,7 +63,7 @@ public class FinanceConsole {
                 Path dataPath = resolveDataPath(env);
                 log.info("Запуск, файл данных: {}", dataPath.toAbsolutePath());
                 var storage = new JsonFileRepository(dataPath);
-                run(storage, storage, printer);
+                run(storage, storage, null, printer);
             }
             case POSTGRES -> {
                 String url = envOrDefault(env, DB_URL_ENV, DEFAULT_DB_URL);
@@ -73,21 +80,40 @@ public class FinanceConsole {
                     System.exit(1);
                     return;
                 }
+                String redisUrl = envOrDefault(env, REDIS_URL_ENV, DEFAULT_REDIS_URL);
+                log.info("Кэш балансов: {}", redisUrl);
+                RedisClient redis = Redis.createClient(redisUrl);
                 try (dataSource) {
                     Database.migrate(dataSource);
-                    run(
-                            new JdbcAccountRepository(dataSource, Database.LOCAL_USER_ID),
-                            new JdbcOperationRepository(dataSource, Database.LOCAL_USER_ID),
-                            printer);
+                    var accounts = new JdbcAccountRepository(dataSource, Database.LOCAL_USER_ID);
+                    try (var balances = new CachedBalanceService(accounts, redis)) {
+                        run(
+                                accounts,
+                                new JdbcOperationRepository(dataSource, Database.LOCAL_USER_ID, balances::evict),
+                                balances,
+                                printer);
+                        log.info("Кэш балансов: попаданий {}, промахов {}", balances.hits(), balances.misses());
+                    }
+                } finally {
+                    Redis.shutdown(redis);
                 }
             }
         }
         log.info("Завершение работы");
     }
 
-    private static void run(AccountRepository accounts, OperationRepository operations, ConsolePrinter printer) {
+    private static void run(
+            AccountRepository accounts,
+            OperationRepository operations,
+            BalanceReader balances,
+            ConsolePrinter printer) {
         var handler = new CommandHandler(
-                accounts, operations, new BalanceCalculator(), printer, Clock.system(ReportService.DEFAULT_ZONE));
+                accounts,
+                operations,
+                new BalanceCalculator(),
+                printer,
+                Clock.system(ReportService.DEFAULT_ZONE),
+                balances);
         new FinanceConsole(handler, printer).run(new BufferedReader(new InputStreamReader(System.in)));
     }
 

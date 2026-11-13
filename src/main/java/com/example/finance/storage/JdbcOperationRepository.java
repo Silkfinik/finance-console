@@ -19,8 +19,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,10 +66,20 @@ public class JdbcOperationRepository implements OperationRepository {
 
     private final DataSource dataSource;
     private final UUID userId;
+    private final Consumer<Set<UUID>> afterCommit;
 
     public JdbcOperationRepository(DataSource dataSource, UUID userId) {
+        this(dataSource, userId, _ -> {});
+    }
+
+    /**
+     * @param afterCommit получает id счетов, балансы которых изменила транзакция; вызывается только после успешного
+     *     commit, когда соединение уже возвращено в пул
+     */
+    public JdbcOperationRepository(DataSource dataSource, UUID userId, Consumer<Set<UUID>> afterCommit) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource не может быть null");
         this.userId = Objects.requireNonNull(userId, "userId не может быть null");
+        this.afterCommit = Objects.requireNonNull(afterCommit, "afterCommit не может быть null");
     }
 
     /**
@@ -78,7 +90,12 @@ public class JdbcOperationRepository implements OperationRepository {
     @Override
     public void saveOperation(Operation op) {
         Objects.requireNonNull(op, "op не может быть null");
-        inTransaction("Не удалось сохранить операцию " + op.id(), c -> {
+        Set<UUID> affected = switch (op) {
+            case Income income -> Set.of(income.accountId());
+            case Expense expense -> Set.of(expense.accountId());
+            case Transfer transfer -> Set.of(transfer.accountId(), transfer.targetAccountId());
+        };
+        inTransaction("Не удалось сохранить операцию " + op.id(), affected, c -> {
             switch (op) {
                 case Income income -> credit(c, income.accountId(), income.amount());
                 case Expense expense -> debit(c, expense.accountId(), expense.amount());
@@ -112,8 +129,9 @@ public class JdbcOperationRepository implements OperationRepository {
         if (ops.isEmpty()) {
             return;
         }
-        inTransaction("Не удалось сохранить " + ops.size() + " операций", c -> {
-            applyDeltas(c, deltas(ops));
+        Map<UUID, BigDecimal> deltas = deltas(ops);
+        inTransaction("Не удалось сохранить " + ops.size() + " операций", deltas.keySet(), c -> {
+            applyDeltas(c, deltas);
             Map<CategoryKey, Long> categories = new HashMap<>();
             try (PreparedStatement ps = c.prepareStatement(INSERT)) {
                 int pending = 0;
@@ -157,7 +175,7 @@ public class JdbcOperationRepository implements OperationRepository {
         void run(Connection c) throws SQLException;
     }
 
-    private void inTransaction(String errorMessage, TransactionBody body) {
+    private void inTransaction(String errorMessage, Set<UUID> affectedAccounts, TransactionBody body) {
         try (Connection c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try {
@@ -170,6 +188,7 @@ public class JdbcOperationRepository implements OperationRepository {
         } catch (SQLException e) {
             throw new StorageException(errorMessage, e);
         }
+        afterCommit.accept(Set.copyOf(affectedAccounts));
     }
 
     private static void debit(Connection c, UUID accountId, BigDecimal amount) throws SQLException {

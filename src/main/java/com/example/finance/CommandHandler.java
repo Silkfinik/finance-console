@@ -10,6 +10,7 @@ import com.example.finance.domain.Operation;
 import com.example.finance.domain.Transfer;
 import com.example.finance.report.ReportService;
 import com.example.finance.storage.AccountRepository;
+import com.example.finance.storage.BalanceReader;
 import com.example.finance.storage.OperationRepository;
 import com.example.finance.storage.StorageException;
 import java.math.BigDecimal;
@@ -56,6 +57,7 @@ public class CommandHandler {
     private final ConsolePrinter out;
     private final Clock clock;
     private final ReportService reports;
+    private final BalanceReader balances;
 
     public CommandHandler(
             AccountRepository accounts,
@@ -63,12 +65,24 @@ public class CommandHandler {
             BalanceCalculator balanceCalculator,
             ConsolePrinter out,
             Clock clock) {
+        this(accounts, operations, balanceCalculator, out, clock, null);
+    }
+
+    /** @param balances источник готовых балансов для команды balance; если null, баланс считается по операциям */
+    public CommandHandler(
+            AccountRepository accounts,
+            OperationRepository operations,
+            BalanceCalculator balanceCalculator,
+            ConsolePrinter out,
+            Clock clock,
+            BalanceReader balances) {
         this.accounts = Objects.requireNonNull(accounts, "accounts не может быть null");
         this.operations = Objects.requireNonNull(operations, "operations не может быть null");
         this.balanceCalculator = Objects.requireNonNull(balanceCalculator, "balanceCalculator не может быть null");
         this.out = Objects.requireNonNull(out, "out не может быть null");
         this.clock = Objects.requireNonNull(clock, "clock не может быть null");
         this.reports = new ReportService(clock.getZone());
+        this.balances = balances;
     }
 
     public boolean handle(String line) {
@@ -205,7 +219,10 @@ public class CommandHandler {
     private void balance(String[] args) {
         requireArgCount(args, 1, 1, "balance <account>");
         Account account = requireAccount(args[0]);
-        BigDecimal balance = balanceCalculator.balanceOf(account.id(), operations.findAllOperations());
+        BigDecimal balance = balances == null
+                ? balanceCalculator.balanceOf(account.id(), operations.findAllOperations())
+                : balances.findBalance(account.id())
+                        .orElseThrow(() -> new StorageException("Нет счёта " + account.id()));
         out.println(account.name() + ": " + format(balance) + " " + account.currency());
     }
 
